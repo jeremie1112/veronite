@@ -31,7 +31,7 @@ Veronite or XVV is here to make our lives simpler and safer.
 ## Coin Supply & Emission
 
 - **Total supply**: **24.000.000** coins.
-- **Premine**: **12%**  No venture comes without cost, there are upfront costs and perpetual costs involved.
+- **Premine**: **10%**  No venture comes without cost, there are upfront costs and perpetual costs involved.
 						These costs range from marketing and development to legal and community involvement.
 						The pre-mine ensures the continuity of the project in building this unique environment for the community and the ongoing growth of the Veronite coin and its platform.
 
