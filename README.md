@@ -23,7 +23,7 @@ Veronite combines real world applications that can potentially alter a person’
 
 Veronite aims to be a leading online platform where ideas can be exchanged, passions can be expressed, investments can be sought and purchases can be made.
 
-Veronite is a fork of the Sumokoin which incorporates safety, privacy and fast transaction times as well as being low cost.
+Veronite is a fork of the Haven which incorporates safety, privacy and fast transaction times as well as being low cost.
 
 Veronite or XVV is here to make our lives simpler and safer.
 
