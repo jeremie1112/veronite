@@ -63,10 +63,10 @@ namespace cryptonote
 
   //-----------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout):m_core(rcore),
+        t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, nodetool::i_p2p_endpoint<connection_context>* p_net_layout, bool offline):m_core(rcore),
                                                                                                               m_p2p(p_net_layout),
                                                                                                               m_syncronized_connections_count(0),
-                                                                                                              m_synchronized(false),
+                                                                                                              m_synchronized(offline),
                                                                                                               m_stopping(false)
 
   {
@@ -443,7 +443,7 @@ namespace cryptonote
       //
       // Also, remember to pepper some whitespace changes around to bother
       // moneromooo ... only because I <3 him.
-      std::vector<size_t> need_tx_indices;
+      std::vector<uint64_t> need_tx_indices;
 
       transaction tx;
       crypto::hash tx_hash;
@@ -1326,6 +1326,15 @@ skip:
           {
             LOG_DEBUG_CC(context, "Block queue is " << nblocks << " and " << size << ", resuming");
           }
+          break;
+        }
+
+        // this one triggers if all threads are in standby, which should not happen,
+        // but happened at least once, so we unblock at least one thread if so
+        const boost::unique_lock<boost::mutex> sync{m_sync_lock, boost::try_to_lock};
+        if (sync.owns_lock())
+        {
+          LOG_DEBUG_CC(context, "No other thread is adding blocks, resuming");
           break;
         }
 

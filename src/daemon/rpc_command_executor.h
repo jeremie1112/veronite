@@ -124,6 +124,8 @@ public:
   bool out_peers(uint64_t limit);
 
   bool start_save_graph();
+ 
+  bool in_peers(uint64_t limit);
 
   bool stop_save_graph();
 

@@ -151,11 +151,18 @@ namespace cryptonote
       }
 
       uint64_t outputs_amount = get_outs_money_amount(tx);
-      if(outputs_amount >= inputs_amount)
+      if(outputs_amount > inputs_amount)
       {
         LOG_PRINT_L1("transaction use more money then it has: use " << print_money(outputs_amount) << ", have " << print_money(inputs_amount));
         tvc.m_verifivation_failed = true;
         tvc.m_overspend = true;
+        return false;
+      }
+      else if(outputs_amount == inputs_amount)
+      {
+        LOG_PRINT_L1("transaction fee is zero: outputs_amount == inputs_amount, rejecting.");
+        tvc.m_verifivation_failed = true;
+        tvc.m_fee_too_low = true;
         return false;
       }
 
@@ -174,7 +181,7 @@ namespace cryptonote
     }
 
     size_t tx_size_limit = get_transaction_size_limit(version);
-    if (!kept_by_block && blob_size >= tx_size_limit)
+    if (!kept_by_block && blob_size > tx_size_limit)
     {
       LOG_PRINT_L1("transaction is too big: " << blob_size << " bytes, maximum size: " << tx_size_limit);
       tvc.m_verifivation_failed = true;
@@ -1112,7 +1119,7 @@ namespace cryptonote
     std::unordered_set<crypto::hash> remove;
 
     m_blockchain.for_all_txpool_txes([this, &remove, tx_size_limit](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata*) {
-      if (meta.blob_size >= tx_size_limit) {
+      if (meta.blob_size > tx_size_limit) {
         LOG_PRINT_L1("Transaction " << txid << " is too big (" << meta.blob_size << " bytes), removing it from pool");
         remove.insert(txid);
       }

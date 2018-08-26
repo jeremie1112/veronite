@@ -2,8 +2,6 @@
 
 Copyright (c) 2018, The Veronite Project
 
-Copyright (c) 2017, Sumokoin
-
 Copyright (c) 2014-2017, The Monero Project
 
 Portions Copyright (c) 2012-2013, The Cryptonote developers
@@ -61,7 +59,7 @@ library archives (`.a`).
 | Dep            | Min. Version  | Vendored | Debian/Ubuntu Pkg  | Arch Pkg       | Optional | Purpose        |
 | -------------- | ------------- | ---------| ------------------ | -------------- | -------- | -------------- |
 | GCC            | 4.7.3         | NO       | `build-essential`  | `base-devel`   | NO       |                |
-| CMake          | 3.0.0         | NO       | `cmake`            | `cmake`        | NO       |                |
+| CMake          | 3.2.0         | NO       | `cmake`            | `cmake`        | NO       |                |
 | pkg-config     | any           | NO       | `pkg-config`       | `base-devel`   | NO       |                |
 | Boost          | 1.58          | NO       | `libboost-all-dev` | `boost`        | NO       |                |
 | OpenSSL      	 | basically any | NO       | `libssl-dev`       | `openssl`      | NO       | sha256 sum     |
