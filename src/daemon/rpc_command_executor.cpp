@@ -1262,7 +1262,7 @@ bool t_rpc_command_executor::out_peers(uint64_t limit)
 
 	if (m_is_rpc)
 	{
-		if (!m_rpc_client->json_rpc_request(req, res, "out_peers", fail_message.c_str()))
+		if (!m_rpc_client->rpc_request(req, res, "/out_peers", fail_message.c_str()))
 		{
 			return true;
 		}
@@ -1289,7 +1289,7 @@ bool t_rpc_command_executor::in_peers(uint64_t limit)
  	std::string fail_message = "Unsuccessful";
  	if (m_is_rpc)
 	{
-		if (!m_rpc_client->json_rpc_request(req, res, "in_peers", fail_message.c_str()))
+		if (!m_rpc_client->rpc_request(req, res, "/in_peers", fail_message.c_str()))
 		{
 			return true;
 		}
