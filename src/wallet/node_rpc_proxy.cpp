@@ -90,7 +90,7 @@ boost::optional<std::string> NodeRPCProxy::get_rpc_version(uint32_t &rpc_version
 boost::optional<std::string> NodeRPCProxy::get_height(uint64_t &height) const
 {
   const time_t now = time(NULL);
-  if (m_height == 0 || now >= m_height_time + 30) // re-cache every 30 seconds
+  if (m_target_height == 0 || now >= m_target_height_time + 30) // re-cache every 30 seconds
   {
     cryptonote::COMMAND_RPC_GET_HEIGHT::request req = AUTO_VAL_INIT(req);
     cryptonote::COMMAND_RPC_GET_HEIGHT::response res = AUTO_VAL_INIT(res);
