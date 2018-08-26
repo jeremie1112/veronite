@@ -638,6 +638,13 @@ namespace cryptonote
      */
     uint64_t get_current_cumulative_blocksize_limit() const;
 
+	 /**
+     * @brief gets the blocksize median based on recent blocks (same window as for the limit)
+     *
+     * @return the median
+     */
+    uint64_t get_current_cumulative_blocksize_median() const;
+	
     /**
      * @brief gets the difficulty of the block with a given height
      *
