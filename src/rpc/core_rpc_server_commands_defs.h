@@ -1741,7 +1741,27 @@ namespace cryptonote
       END_KV_SERIALIZE_MAP()
     };
   };
-    
+  
+  struct COMMAND_RPC_IN_PEERS
+  {
+    struct request
+    {
+      uint64_t in_peers;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(in_peers)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response
+    {
+      std::string status;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(status)
+      END_KV_SERIALIZE_MAP()
+    };
+  };
+  
   struct COMMAND_RPC_START_SAVE_GRAPH
   {
 	struct request
