@@ -970,6 +970,7 @@ namespace cryptonote
     // main chain
     transactions_container m_transactions;
     size_t m_current_block_cumul_sz_limit;
+	size_t m_current_block_cumul_sz_median;
 
     // metadata containers
     std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image, std::vector<output_data_t>>> m_scan_table;
