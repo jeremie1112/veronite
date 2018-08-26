@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #ifdef HAVE_EXPLICIT_BZERO
 #include <strings.h>
 #endif
@@ -51,7 +52,12 @@ void *memwipe(void *ptr, size_t n)
 {
   if (memset_s(ptr, n, 0, n))
   {
+#ifdef NDEBUG
+    fprintf(stderr, "Error: memset_s failed\n");
+    _exit(1);
+#else
     abort();
+#endif
   }
   SCARECROW // might as well...
   return ptr;
