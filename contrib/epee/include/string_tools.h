@@ -45,6 +45,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include "hex.h"
+#include "memwipe.h"
 #include "span.h"
 #include "warnings.h"
 
@@ -128,7 +129,7 @@ namespace string_tools
   template<class t_pod_type>
   bool parse_tpod_from_hex_string(const std::string& str_hash, t_pod_type& t_pod)
   {
-    static_assert(std::is_pod<t_pod_type>::value, "expected pod type");
+    static_assert(std::is_standard_layout<t_pod_type>(), "expected standard layout type");
     std::string buf;
     bool res = epee::string_tools::parse_hexstr_to_binbuff(str_hash, buf);
     if (!res || buf.size() != sizeof(t_pod_type))
@@ -349,6 +350,12 @@ POP_WARNINGS
 
     s = *(t_pod_type*)bin_buff.data();
     return true;
+  }
+  //----------------------------------------------------------------------------
+  template<class t_pod_type>
+  bool hex_to_pod(const std::string& hex_str, tools::scrubbed<t_pod_type>& s)
+  {
+    return hex_to_pod(hex_str, unwrap(s));
   }
   //----------------------------------------------------------------------------
   bool validate_hex(uint64_t length, const std::string& str);
