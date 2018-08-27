@@ -1,5 +1,4 @@
-// Copyright (c) 2014-2017 The Monero Project.
-//
+// Copyright (c) 2014-2018, The Monero Project
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without modification, are
@@ -360,6 +359,8 @@ private:
   void check_open() const;
 
   virtual bool is_read_only() const;
+
+  // fix up anything that may be wrong due to past bugs
 
   // migrate from older DB version to current
   void migrate(const uint32_t oldversion);
