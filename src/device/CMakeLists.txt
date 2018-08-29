@@ -26,20 +26,29 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set(cryptonote_core_sources
-  blockchain.cpp
-  cryptonote_core.cpp
-  tx_pool.cpp
-  cryptonote_tx_utils.cpp)
+set(device_sources
+  device.cpp
+  device_default.cpp
+  log.cpp
+  )
 
-set(cryptonote_core_headers)
+if(PCSC_FOUND)
+  set(device_sources ${device_sources} device_ledger.cpp)
+endif()
 
-set(cryptonote_core_private_headers
-  blockchain_storage_boost_serialization.h
-  blockchain.h
-  cryptonote_core.h
-  tx_pool.h
-  cryptonote_tx_utils.h)
+set(device_headers
+  device_declare.hpp
+  device.hpp
+  device_default.hpp
+  log.hpp
+ )
+
+if(PCSC_FOUND)
+  set(device_headers ${device_headers} device_ledger.hpp)
+endif()
+
+set(device_private_headers)
+
 
 if(PER_BLOCK_CHECKPOINT)
   set(Blocks "blocks")
@@ -47,27 +56,20 @@ else()
   set(Blocks "")
 endif()
 
-monero_private_headers(cryptonote_core
-  ${cryptonote_core_private_headers})
-monero_add_library(cryptonote_core
-  ${cryptonote_core_sources}
-  ${cryptonote_core_headers}
-  ${cryptonote_core_private_headers})
-target_link_libraries(cryptonote_core
+monero_private_headers(device
+  ${device_private_headers})
+
+monero_add_library(device
+  ${device_sources}
+  ${device_headers}
+  ${device_private_headers})
+
+target_link_libraries(device
   PUBLIC
-    version
-    common
+    ${PCSC_LIBRARIES}
     cncrypto
-    blockchain_db
-    multisig
     ringct
-	device
-    ${Boost_DATE_TIME_LIBRARY}
-    ${Boost_PROGRAM_OPTIONS_LIBRARY}
-    ${Boost_SERIALIZATION_LIBRARY}
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
+    ${OPENSSL_CRYPTO_LIBRARIES}
   PRIVATE
     ${Blocks}
     ${EXTRA_LIBRARIES})

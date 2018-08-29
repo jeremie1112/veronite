@@ -38,6 +38,8 @@
 #include "version.h"
 #include "net/http_client.h"
 
+#include "device/device.hpp"
+
 #include <boost/filesystem.hpp>
 #include <boost/regex.hpp>
 
@@ -149,7 +151,7 @@ bool WalletManagerImpl::walletExists(const std::string &path)
 
 bool WalletManagerImpl::verifyWalletPassword(const std::string &keys_file_name, const std::string &password, bool no_spend_key) const
 {
-	    return tools::wallet2::verify_password(keys_file_name, password, no_spend_key);
+	    return tools::wallet2::verify_password(keys_file_name, password, no_spend_key, hw::get_device("default"));
 }
 
 std::vector<std::string> WalletManagerImpl::findWallets(const std::string &path)
