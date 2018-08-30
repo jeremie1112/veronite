@@ -79,6 +79,7 @@ enum {
 };
 
 void cn_fast_hash(const void *data, size_t length, char *hash);
+void cn_slow_hash(const void *data, size_t length, char *hash, int variant, int prehashed);
 void cn_slow_hash_pre(const void *data, size_t length, char *hash, bool pre);
 
 void hash_extra_blake(const void *data, size_t length, char *hash);
