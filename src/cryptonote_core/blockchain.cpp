@@ -548,6 +548,12 @@ block Blockchain::pop_block_from_blockchain()
       }
     }
   }
+ 
+  m_blocks_longhash_table.clear();
+  m_scan_table.clear();
+  m_blocks_txs_check.clear();
+  m_check_txin_table.clear();
+
   update_next_cumulative_size_limit();
   m_tx_pool.on_blockchain_dec(m_db->height()-1, get_tail_id());
 
@@ -706,25 +712,6 @@ bool Blockchain::get_block_by_hash(const crypto::hash &h, block &blk, bool *orph
   }
 
   return false;
-}
-//------------------------------------------------------------------
-//FIXME: this function does not seem to be called from anywhere, but
-// if it ever is, should probably change std::list for std::vector
-void Blockchain::get_all_known_block_ids(std::list<crypto::hash> &main, std::list<crypto::hash> &alt, std::list<crypto::hash> &invalid) const
-{
-  LOG_PRINT_L3("Blockchain::" << __func__);
-  CRITICAL_REGION_LOCAL(m_blockchain_lock);
-
-  for (auto& a : m_db->get_hashes_range(0, m_db->height() - 1))
-  {
-    main.push_back(a);
-  }
-
-  for (const blocks_ext_by_hash::value_type &v: m_alternative_chains)
-    alt.push_back(v.first);
-
-  for (const blocks_ext_by_hash::value_type &v: m_invalid_blocks)
-    invalid.push_back(v.first);
 }
 //------------------------------------------------------------------
 // This function aggregates the cumulative difficulties and timestamps of the
@@ -1131,6 +1118,12 @@ bool Blockchain::create_block_template(block& b, const account_public_address& m
 
   diffic = get_difficulty_for_next_block();
   CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
+
+  uint64_t median_ts;
+  if (!check_block_timestamp(b, median_ts))
+  {
+    b.timestamp = median_ts;
+  }
 
   median_size = m_current_block_cumul_sz_limit / 2;
   already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
@@ -1890,6 +1883,43 @@ void Blockchain::get_output_key_mask_unlocked(const uint64_t& amount, const uint
   unlocked = is_tx_spendtime_unlocked(m_db->get_tx_unlock_time(toi.first));
 }
 //------------------------------------------------------------------
+bool Blockchain::get_output_distribution(uint64_t amount, uint64_t from_height, uint64_t &start_height, std::vector<uint64_t> &distribution, uint64_t &base) const
+{
+  // rct outputs don't exist before v3
+  if (amount == 0)
+  {
+    switch (m_nettype)
+    {
+      case STAGENET: start_height = stagenet_hard_forks[2].height; break;
+      case TESTNET: start_height = testnet_hard_forks[2].height; break;
+      case MAINNET: start_height = mainnet_hard_forks[2].height; break;
+      default: return false;
+    }
+  }
+  else
+    start_height = 0;
+  base = 0;
+   const uint64_t real_start_height = start_height;
+  if (from_height > start_height)
+    start_height = from_height;
+   distribution.clear();
+  uint64_t db_height = m_db->height();
+  if (start_height >= db_height)
+    return false;
+  distribution.resize(db_height - start_height, 0);
+  bool r = for_all_outputs(amount, [&](uint64_t height) {
+    CHECK_AND_ASSERT_MES(height >= real_start_height && height <= db_height, false, "Height not in expected range");
+    if (height >= start_height)
+      distribution[height - start_height]++;
+    else
+      base++;
+    return true;
+  });
+  if (!r)
+    return false;
+  return true;
+}
+//------------------------------------------------------------------
 // This function takes a list of block hashes from another node
 // on the network to find where the split point is between us and them.
 // This is used to see what to send another node that needs to sync.
@@ -2378,7 +2408,8 @@ bool Blockchain::check_tx_outputs(const transaction& tx, tx_verification_context
 
   // from v3, allow bulletproofs
   if (hf_version < 3) {
-    if (!tx.rct_signatures.p.bulletproofs.empty())
+    const bool bulletproof = tx.rct_signatures.type == rct::RCTTypeFullBulletproof || tx.rct_signatures.type == rct::RCTTypeSimpleBulletproof;
+    if (bulletproof || !tx.rct_signatures.p.bulletproofs.empty())
     {
       MERROR("Bulletproofs are not allowed before v3");
       tvc.m_invalid_output = true;
@@ -3050,10 +3081,10 @@ uint64_t Blockchain::get_adjusted_time() const
 }
 //------------------------------------------------------------------
 //TODO: revisit, has changed a bit on upstream
-bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b) const
+bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b, uint64_t& median_ts) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
-  uint64_t median_ts = epee::misc_utils::median(timestamps);
+  median_ts = epee::misc_utils::median(timestamps);
 
   if(b.timestamp < median_ts)
   {
@@ -3071,7 +3102,7 @@ bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const 
 //   true if the block's timestamp is not less than the timestamp of the
 //       median of the selected blocks
 //   false otherwise
-bool Blockchain::check_block_timestamp(const block& b) const
+bool Blockchain::check_block_timestamp(const block& b, uint64_t& median_ts) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
   if(b.timestamp > get_adjusted_time() + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
@@ -3096,7 +3127,7 @@ bool Blockchain::check_block_timestamp(const block& b) const
     timestamps.push_back(m_db->get_block_timestamp(offset));
   }
 
-  return check_block_timestamp(timestamps, b);
+  return check_block_timestamp(timestamps, b, median_ts);
 }
 //------------------------------------------------------------------
 void Blockchain::return_tx_to_pool(std::vector<transaction> &txs)
@@ -4256,9 +4287,9 @@ uint64_t Blockchain::get_difficulty_target() const
   return DIFFICULTY_TARGET;
 }
 
-std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff) const
+std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const
 {
-  return m_db->get_output_histogram(amounts, unlocked, recent_cutoff);
+  return m_db->get_output_histogram(amounts, unlocked, recent_cutoff, min_count);
 }
 
 std::list<std::pair<Blockchain::block_extended_info,uint64_t>> Blockchain::get_alternative_chains() const
@@ -4415,9 +4446,14 @@ bool Blockchain::for_all_transactions(std::function<bool(const crypto::hash&, co
   return m_db->for_all_transactions(f);
 }
 
-bool Blockchain::for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, size_t tx_idx)> f) const
+bool Blockchain::for_all_outputs(std::function<bool(uint64_t amount, const crypto::hash &tx_hash, uint64_t height, size_t tx_idx)> f) const
 {
   return m_db->for_all_outputs(f);;
+}
+
+bool Blockchain::for_all_outputs(uint64_t amount, std::function<bool(uint64_t height)> f) const
+{
+  return m_db->for_all_outputs(amount, f);;
 }
 
 namespace cryptonote {
