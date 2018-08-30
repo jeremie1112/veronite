@@ -112,7 +112,7 @@ using namespace cryptonote;
 
 #define MULTISIG_EXPORT_FILE_MAGIC "Monero multisig export\001"
 
-#define SEGREGATION_FORK_HEIGHT 1560000
+#define SEGREGATION_FORK_HEIGHT 1546000
 #define TESTNET_SEGREGATION_FORK_HEIGHT 1000000
 #define STAGENET_SEGREGATION_FORK_HEIGHT 1000000
 #define SEGREGATION_FORK_VICINITY 1500 /* blocks */
@@ -649,6 +649,7 @@ wallet2::wallet2(network_type nettype, bool restricted):
   m_refresh_from_block_height(0),
   m_explicit_refresh_from_block_height(true),
   m_confirm_missing_payment_id(true),
+  m_confirm_non_default_ring_size(true),
   m_ask_password(true),
   m_min_output_count(0),
   m_min_output_value(0),
@@ -2050,6 +2051,7 @@ void wallet2::update_pool_state(bool refreshed)
       req.txs_hashes.push_back(epee::string_tools::pod_to_hex(p.first));
     MDEBUG("asking for " << txids.size() << " transactions");
     req.decode_as_json = false;
+    req.prune = false;
     m_daemon_rpc_mutex.lock();
     bool r = epee::net_utils::invoke_http_json("/gettransactions", req, res, m_http_client, rpc_timeout);
     m_daemon_rpc_mutex.unlock();
@@ -2599,6 +2601,9 @@ bool wallet2::store_keys(const std::string& keys_file_name, const epee::wipeable
   value2.SetInt(m_confirm_missing_payment_id ? 1 :0);
   json.AddMember("confirm_missing_payment_id", value2, json.GetAllocator());
 
+  value2.SetInt(m_confirm_non_default_ring_size ? 1 :0);
+  json.AddMember("confirm_non_default_ring_size", value2, json.GetAllocator());
+
   value2.SetInt(m_ask_password ? 1 :0);
   json.AddMember("ask_password", value2, json.GetAllocator());
 
@@ -2637,6 +2642,12 @@ bool wallet2::store_keys(const std::string& keys_file_name, const epee::wipeable
 
   value2.SetUint(m_segregation_height);
   json.AddMember("segregation_height", value2, json.GetAllocator());
+
+  value2.SetUint(m_subaddress_lookahead_major);
+  json.AddMember("subaddress_lookahead_major", value2, json.GetAllocator());
+ 
+  value2.SetUint(m_subaddress_lookahead_minor);
+  json.AddMember("subaddress_lookahead_minor", value2, json.GetAllocator());
 
   // Serialize the JSON object
   rapidjson::StringBuffer buffer;
@@ -2700,6 +2711,7 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
     m_auto_refresh = true;
     m_refresh_type = RefreshType::RefreshDefault;
     m_confirm_missing_payment_id = true;
+	m_confirm_non_default_ring_size = true;
     m_ask_password = true;
     m_min_output_count = 0;
     m_min_output_value = 0;
@@ -2711,6 +2723,8 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
     m_segregate_pre_fork_outputs = true;
     m_key_reuse_mitigation2 = true;
     m_segregation_height = 0;
+    m_subaddress_lookahead_major = SUBADDRESS_LOOKAHEAD_MAJOR;
+    m_subaddress_lookahead_minor = SUBADDRESS_LOOKAHEAD_MINOR;
 	m_key_on_device = false;
   }
   else if(json.IsObject())
@@ -2803,6 +2817,8 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
     m_refresh_from_block_height = field_refresh_height;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_missing_payment_id, int, Int, false, true);
     m_confirm_missing_payment_id = field_confirm_missing_payment_id;
+    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, confirm_non_default_ring_size, int, Int, false, true);
+    m_confirm_non_default_ring_size = field_confirm_non_default_ring_size;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, ask_password, int, Int, false, true);
     m_ask_password = field_ask_password;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, default_decimal_point, int, Int, false, CRYPTONOTE_DISPLAY_DECIMAL_POINT);
@@ -2833,6 +2849,10 @@ bool wallet2::load_keys(const std::string& keys_file_name, const epee::wipeable_
     m_key_reuse_mitigation2 = field_key_reuse_mitigation2;
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, segregation_height, int, Uint, false, 0);
     m_segregation_height = field_segregation_height;
+    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, subaddress_lookahead_major, uint32_t, Uint, false, SUBADDRESS_LOOKAHEAD_MAJOR);
+    m_subaddress_lookahead_major = field_subaddress_lookahead_major;
+    GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, subaddress_lookahead_minor, uint32_t, Uint, false, SUBADDRESS_LOOKAHEAD_MINOR);
+    m_subaddress_lookahead_minor = field_subaddress_lookahead_minor;
   }
   else
   {
@@ -5501,7 +5521,7 @@ bool wallet2::set_ring_database(const std::string &filename)
  bool wallet2::add_rings(const crypto::chacha8_key &key, const cryptonote::transaction_prefix &tx)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try { return m_ringdb->add_rings(key, tx); }
   catch (const std::exception &e) { return false; }
 }
@@ -5515,7 +5535,7 @@ bool wallet2::set_ring_database(const std::string &filename)
  bool wallet2::remove_rings(const cryptonote::transaction_prefix &tx)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   crypto::chacha8_key key;
   generate_chacha_key_from_secret_keys(key);
   try { return m_ringdb->remove_rings(key, tx); }
@@ -5524,7 +5544,7 @@ bool wallet2::set_ring_database(const std::string &filename)
  bool wallet2::get_ring(const crypto::chacha8_key &key, const crypto::key_image &key_image, std::vector<uint64_t> &outs)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try { return m_ringdb->get_ring(key, key_image, outs); }
   catch (const std::exception &e) { return false; }
 }
@@ -5560,7 +5580,7 @@ bool wallet2::set_ring_database(const std::string &filename)
  bool wallet2::set_ring(const crypto::key_image &key_image, const std::vector<uint64_t> &outs, bool relative)
 {
   if (!m_ringdb)
-    return true;
+    return false;
    crypto::chacha8_key key;
   generate_chacha_key_from_secret_keys(key);
    try { return m_ringdb->set_ring(key, key_image, outs, relative); }
@@ -5571,39 +5591,52 @@ bool wallet2::set_ring_database(const std::string &filename)
   if (!force && m_ring_history_saved)
     return true;
   if (!m_ringdb)
-    return true;
+    return false;
    COMMAND_RPC_GET_TRANSACTIONS::request req = AUTO_VAL_INIT(req);
   COMMAND_RPC_GET_TRANSACTIONS::response res = AUTO_VAL_INIT(res);
    MDEBUG("Finding and saving rings...");
    // get payments we made
+  std::vector<crypto::hash> txs_hashes;
   std::list<std::pair<crypto::hash,wallet2::confirmed_transfer_details>> payments;
   get_payments_out(payments, 0, std::numeric_limits<uint64_t>::max(), boost::none, std::set<uint32_t>());
   for (const std::pair<crypto::hash,wallet2::confirmed_transfer_details> &entry: payments)
   {
     const crypto::hash &txid = entry.first;
-    req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
+    txs_hashes.push_back(txid);
   }
-   MDEBUG("Found " << std::to_string(req.txs_hashes.size()) << " transactions");
-   // get those transactions from the daemon
-  req.decode_as_json = false;
-  bool r;
-  {
-    const boost::lock_guard<boost::mutex> lock{m_daemon_rpc_mutex};
-    r = epee::net_utils::invoke_http_json("/gettransactions", req, res, m_http_client, rpc_timeout);
-  }
-  THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "gettransactions");
-  THROW_WALLET_EXCEPTION_IF(res.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "gettransactions");
-  THROW_WALLET_EXCEPTION_IF(res.status != CORE_RPC_STATUS_OK, error::wallet_internal_error, "gettransactions");
-  THROW_WALLET_EXCEPTION_IF(res.txs.size() != req.txs_hashes.size(), error::wallet_internal_error,
-    "daemon returned wrong response for gettransactions, wrong txs count = " +
-    std::to_string(res.txs.size()) + ", expected " + std::to_string(req.txs_hashes.size()));
-   MDEBUG("Scanning " << res.txs.size() << " transactions");
+  MDEBUG("Found " << std::to_string(txs_hashes.size()) << " transactions");
+  
    crypto::chacha8_key key;
   generate_chacha_key_from_secret_keys(key);
-   auto it = req.txs_hashes.begin();
-  for (size_t i = 0; i < res.txs.size(); ++i, ++it)
+  
+  // get those transactions from the daemon
+  static const size_t SLICE_SIZE = 200;
+  for (size_t slice = 0; slice < txs_hashes.size(); slice += SLICE_SIZE)
   {
+    req.decode_as_json = false;
+    req.prune = true;
+    req.txs_hashes.clear();
+    size_t ntxes = slice + SLICE_SIZE > txs_hashes.size() ? txs_hashes.size() - slice : SLICE_SIZE;
+    for (size_t s = slice; s < slice + ntxes; ++s)
+      req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txs_hashes[s]));
+    bool r;
+    {
+      const boost::lock_guard<boost::mutex> lock{m_daemon_rpc_mutex};
+      r = epee::net_utils::invoke_http_json("/gettransactions", req, res, m_http_client, rpc_timeout);
+    }
+    THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "gettransactions");
+    THROW_WALLET_EXCEPTION_IF(res.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "gettransactions");
+    THROW_WALLET_EXCEPTION_IF(res.status != CORE_RPC_STATUS_OK, error::wallet_internal_error, "gettransactions");
+    THROW_WALLET_EXCEPTION_IF(res.txs.size() != req.txs_hashes.size(), error::wallet_internal_error,
+      "daemon returned wrong response for gettransactions, wrong txs count = " +
+      std::to_string(res.txs.size()) + ", expected " + std::to_string(req.txs_hashes.size()));
+     MDEBUG("Scanning " << res.txs.size() << " transactions");
+    THROW_WALLET_EXCEPTION_IF(slice + res.txs.size() > txs_hashes.size(), error::wallet_internal_error, "Unexpected tx array size");
+    auto it = req.txs_hashes.begin();
+    for (size_t i = 0; i < res.txs.size(); ++i, ++it)
+    {
     const auto &tx_info = res.txs[i];
+    THROW_WALLET_EXCEPTION_IF(tx_info.tx_hash != epee::string_tools::pod_to_hex(txs_hashes[slice + i]), error::wallet_internal_error, "Wrong txid received");
     THROW_WALLET_EXCEPTION_IF(tx_info.tx_hash != *it, error::wallet_internal_error, "Wrong txid received");
     cryptonote::blobdata bd;
     THROW_WALLET_EXCEPTION_IF(!epee::string_tools::parse_hexstr_to_binbuff(tx_info.as_hex, bd), error::wallet_internal_error, "failed to parse tx from hexstr");
@@ -5612,22 +5645,25 @@ bool wallet2::set_ring_database(const std::string &filename)
     THROW_WALLET_EXCEPTION_IF(!cryptonote::parse_and_validate_tx_from_blob(bd, tx, tx_hash, tx_prefix_hash), error::wallet_internal_error, "failed to parse tx from blob");
     THROW_WALLET_EXCEPTION_IF(epee::string_tools::pod_to_hex(tx_hash) != tx_info.tx_hash, error::wallet_internal_error, "txid mismatch");
     THROW_WALLET_EXCEPTION_IF(!add_rings(key, tx), error::wallet_internal_error, "Failed to save ring");
+   }
   }
-   MINFO("Found and saved rings for " << res.txs.size() << " transactions");
+   MINFO("Found and saved rings for " << txs_hashes.size() << " transactions");
   m_ring_history_saved = true;
   return true;
 }
- bool wallet2::blackball_output(const crypto::public_key &output)
+
+bool wallet2::blackball_output(const crypto::public_key &output)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try { return m_ringdb->blackball(output); }
   catch (const std::exception &e) { return false; }
 }
+
  bool wallet2::set_blackballed_outputs(const std::vector<crypto::public_key> &outputs, bool add)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try
   {
     bool ret = true;
@@ -5642,7 +5678,7 @@ bool wallet2::set_ring_database(const std::string &filename)
  bool wallet2::unblackball_output(const crypto::public_key &output)
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try { return m_ringdb->unblackball(output); }
   catch (const std::exception &e) { return false; }
 }
@@ -5650,7 +5686,7 @@ bool wallet2::set_ring_database(const std::string &filename)
 bool wallet2::is_output_blackballed(const crypto::public_key &output) const
 {
   if (!m_ringdb)
-    return true;
+    return false;
   try { return m_ringdb->blackballed(output); }
   catch (const std::exception &e) { return false; }
 }
@@ -5826,9 +5862,10 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       auto end = std::unique(req_t.amounts.begin(), req_t.amounts.end());
       req_t.amounts.resize(std::distance(req_t.amounts.begin(), end));
       req_t.from_height = std::max<uint64_t>(segregation_fork_height, RECENT_OUTPUT_BLOCKS) - RECENT_OUTPUT_BLOCKS;
+      req_t.to_height = segregation_fork_height + 1;
       req_t.cumulative = true;
       m_daemon_rpc_mutex.lock();
-      bool r = net_utils::invoke_http_json_rpc("/json_rpc", "get_output_distribution", req_t, resp_t, m_http_client, rpc_timeout);
+      bool r = net_utils::invoke_http_json_rpc("/json_rpc", "get_output_distribution", req_t, resp_t, m_http_client, rpc_timeout * 1000);
       m_daemon_rpc_mutex.unlock();
       THROW_WALLET_EXCEPTION_IF(!r, error::no_connection_to_daemon, "transfer_selected");
       THROW_WALLET_EXCEPTION_IF(resp_t.status == CORE_RPC_STATUS_BUSY, error::daemon_busy, "get_output_distribution");
@@ -5844,7 +5881,8 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           {
             THROW_WALLET_EXCEPTION_IF(d.start_height > segregation_fork_height, error::get_output_distribution, "Distribution start_height too high");
             THROW_WALLET_EXCEPTION_IF(segregation_fork_height - d.start_height >= d.distribution.size(), error::get_output_distribution, "Distribution size too small");
-            THROW_WALLET_EXCEPTION_IF(segregation_fork_height <= RECENT_OUTPUT_BLOCKS, error::wallet_internal_error, "Fork height too low");
+            THROW_WALLET_EXCEPTION_IF(segregation_fork_height - RECENT_OUTPUT_BLOCKS - d.start_height >= d.distribution.size(), error::get_output_distribution, "Distribution size too small");
+			THROW_WALLET_EXCEPTION_IF(segregation_fork_height <= RECENT_OUTPUT_BLOCKS, error::wallet_internal_error, "Fork height too low");
             THROW_WALLET_EXCEPTION_IF(segregation_fork_height - RECENT_OUTPUT_BLOCKS < d.start_height, error::get_output_distribution, "Bad start height");
             uint64_t till_fork = d.distribution[segregation_fork_height - d.start_height];
             uint64_t recent = till_fork - d.distribution[segregation_fork_height - RECENT_OUTPUT_BLOCKS - d.start_height];
@@ -8140,6 +8178,7 @@ std::string wallet2::get_spend_proof(const crypto::hash &txid, const std::string
   COMMAND_RPC_GET_TRANSACTIONS::request req = AUTO_VAL_INIT(req);
   req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
   req.decode_as_json = false;
+  req.prune = false;
   COMMAND_RPC_GET_TRANSACTIONS::response res = AUTO_VAL_INIT(res);
   bool r;
   {
@@ -8259,6 +8298,7 @@ bool wallet2::check_spend_proof(const crypto::hash &txid, const std::string &mes
   COMMAND_RPC_GET_TRANSACTIONS::request req = AUTO_VAL_INIT(req);
   req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
   req.decode_as_json = false;
+  req.prune = false;
   COMMAND_RPC_GET_TRANSACTIONS::response res = AUTO_VAL_INIT(res);
   bool r;
   {
@@ -8381,6 +8421,8 @@ void wallet2::check_tx_key_helper(const crypto::hash &txid, const crypto::key_de
   COMMAND_RPC_GET_TRANSACTIONS::request req;
   COMMAND_RPC_GET_TRANSACTIONS::response res;
   req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
+  req.decode_as_json = false;
+  req.prune = false;
   m_daemon_rpc_mutex.lock();
   bool ok = epee::net_utils::invoke_http_json("/gettransactions", req, res, m_http_client);
   m_daemon_rpc_mutex.unlock();
@@ -8517,6 +8559,8 @@ std::string wallet2::get_tx_proof(const crypto::hash &txid, const cryptonote::ac
     COMMAND_RPC_GET_TRANSACTIONS::request req;
     COMMAND_RPC_GET_TRANSACTIONS::response res;
     req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
+    req.decode_as_json = false;
+    req.prune = false;
     m_daemon_rpc_mutex.lock();
     bool ok = net_utils::invoke_http_json("/gettransactions", req, res, m_http_client);
     m_daemon_rpc_mutex.unlock();
@@ -8627,6 +8671,8 @@ bool wallet2::check_tx_proof(const crypto::hash &txid, const cryptonote::account
   COMMAND_RPC_GET_TRANSACTIONS::request req;
   COMMAND_RPC_GET_TRANSACTIONS::response res;
   req.txs_hashes.push_back(epee::string_tools::pod_to_hex(txid));
+  req.decode_as_json = false;
+  req.prune = false;
   m_daemon_rpc_mutex.lock();
   bool ok = net_utils::invoke_http_json("/gettransactions", req, res, m_http_client);
   m_daemon_rpc_mutex.unlock();
@@ -8842,6 +8888,8 @@ std::string wallet2::get_reserve_proof(const boost::optional<std::pair<uint32_t,
   COMMAND_RPC_GET_TRANSACTIONS::response gettx_res;
   for (size_t i = 0; i < proofs.size(); ++i)
     gettx_req.txs_hashes.push_back(epee::string_tools::pod_to_hex(proofs[i].txid));
+  gettx_req.decode_as_json = false;
+  gettx_req.prune = false;
   m_daemon_rpc_mutex.lock();
   bool ok = net_utils::invoke_http_json("/gettransactions", gettx_req, gettx_res, m_http_client);
   m_daemon_rpc_mutex.unlock();
@@ -9404,6 +9452,7 @@ uint64_t wallet2::import_key_images(const std::vector<std::pair<crypto::key_imag
     COMMAND_RPC_GET_TRANSACTIONS::request gettxs_req;
     COMMAND_RPC_GET_TRANSACTIONS::response gettxs_res;
     gettxs_req.decode_as_json = false;
+    gettxs_req.prune = false;
     for (const crypto::hash& spent_txid : spent_txids)
       gettxs_req.txs_hashes.push_back(epee::string_tools::pod_to_hex(spent_txid));
     m_daemon_rpc_mutex.lock();

@@ -64,6 +64,7 @@
 #include "ringct/rctSigs.h"
 #include "multisig/multisig.h"
 #include "wallet/wallet_args.h"
+#include "version.h"
 #include <stdexcept>
 
 #ifdef WIN32
@@ -1562,6 +1563,12 @@ bool simple_wallet::print_ring(const std::vector<std::string> &args)
   return true;
 }
 
+bool simple_wallet::version(const std::vector<std::string> &args)
+{
+  message_writer() << "Veronite '" << VERONITE_RELEASE_NAME << "' (v" << VERONITE_VERSION_FULL << ")";
+  return true;
+}
+
 bool simple_wallet::set_always_confirm_transfers(const std::vector<std::string> &args/* = std::vector<std::string>()*/)
 {
   const auto pwd_container = get_and_verify_password();
@@ -1627,6 +1634,9 @@ bool simple_wallet::set_default_ring_size(const std::vector<std::string> &args/*
       fail_msg_writer() << tr("ring size must be an integer >= ") << MIN_RING_SIZE;
       return true;
     }
+	
+    if (ring_size != 0 && ring_size != DEFAULT_MIX+1)
+      message_writer() << tr("WARNING: this is a non default ring size, which may harm your privacy. Default is recommended.");
 
     const auto pwd_container = get_and_verify_password();
     if (pwd_container)
@@ -2043,8 +2053,8 @@ simple_wallet::simple_wallet()
                            tr("Donate <amount> to the development team"));
   m_cmd_binder.set_handler("sign_transfer",
                            boost::bind(&simple_wallet::sign_transfer, this, _1),
-                           tr("sign_transfer <file>"),
-                           tr("Sign a transaction from a <file>."));
+                           tr("sign_transfer [export]"),
+                           tr("Sign a transaction from a file."));
   m_cmd_binder.set_handler("submit_transfer",
                            boost::bind(&simple_wallet::submit_transfer, this, _1),
                            tr("Submit a signed transaction from a file."));
@@ -2304,6 +2314,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::blackballed, this, _1),
                            tr("blackballed <output public key>"),
                            tr("Checks whether an output is blackballed"));
+  m_cmd_binder.set_handler("version",
+                           boost::bind(&simple_wallet::version, this, _1),
+                           tr("version"),
+                           tr("Returns version information"));
   m_cmd_binder.set_handler("help",
                            boost::bind(&simple_wallet::help, this, _1),
                            tr("help [<command>]"),
@@ -3287,7 +3301,7 @@ bool simple_wallet::new_wallet(const boost::program_options::variables_map& vm,
     "To start synchronizing with the daemon, use the \"refresh\" command.\n"
     "Use the \"help\" command to see the list of available commands.\n"
     "Use \"help <command>\" to see a command's documentation.\n"
-    "Always use the \"exit\" command when closing monero-wallet-cli to save \n"
+    "Always use the \"exit\" command when closing veronite-wallet-cli to save \n"
     "your current session's state. Otherwise, you might need to synchronize \n"
     "your wallet again (your wallet keys are NOT at risk in any case).\n")
   ;
@@ -4560,6 +4574,23 @@ bool simple_wallet::transfer_main(int transfer_type, const std::vector<std::stri
         {
           if (!print_ring_members(ptx_vector, prompt))
             return true;
+        }
+        bool default_ring_size = true;
+        for (const auto &ptx: ptx_vector)
+        {
+          for (const auto &vin: ptx.tx.vin)
+          {
+            if (vin.type() == typeid(txin_to_key))
+            {
+              const txin_to_key& in_to_key = boost::get<txin_to_key>(vin);
+              if (in_to_key.key_offsets.size() != DEFAULT_MIX + 1)
+                default_ring_size = false;
+            }
+          }
+        }
+        if (m_wallet->confirm_non_default_ring_size() && !default_ring_size)
+        {
+          prompt << tr("WARNING: this is a non default ring size, which may harm your privacy. Default is recommended.");
         }
         prompt << ENDL << tr("Is this okay?  (Y/Yes/N/No): ");
 
