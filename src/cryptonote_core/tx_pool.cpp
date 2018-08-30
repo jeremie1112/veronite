@@ -1197,7 +1197,6 @@ namespace cryptonote
           return false;
         }
         m_txs_by_fee_and_receive_time.emplace(std::pair<double, time_t>(meta.fee / (double)meta.blob_size, meta.receive_time), txid);
-        m_txpool_size += meta.blob_size;
         return true;
       }, true);
       if (!r)

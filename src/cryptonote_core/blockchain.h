@@ -829,10 +829,11 @@ namespace cryptonote
      * @param amounts optional set of amounts to lookup
      * @param unlocked whether to restrict instances to unlocked ones
      * @param recent_cutoff timestamp to consider outputs as recent
+     * @param min_count return only amounts with at least that many instances
      *
      * @return a set of amount/instances
      */
-    std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff) const;
+    std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count = 0) const;
 
     /**
      * @brief perform a check on all key images in the blockchain
@@ -1293,10 +1294,12 @@ namespace cryptonote
      *   false otherwise
      *
      * @param b the block to be checked
+     * @param median_ts return-by-reference the median of timestamps
      *
      * @return true if the block's timestamp is valid, otherwise false
      */
-    bool check_block_timestamp(const block& b) const;
+    bool check_block_timestamp(const block& b, uint64_t& median_ts) const;
+    bool check_block_timestamp(const block& b) const { uint64_t median_ts; return check_block_timestamp(b, median_ts); }
 
     /**
      * @brief checks a block's timestamp
@@ -1309,7 +1312,8 @@ namespace cryptonote
      *
      * @return true if the block's timestamp is valid, otherwise false
      */
-    bool check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b) const;
+    bool check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b, uint64_t& median_ts) const;
+    bool check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b) const { uint64_t median_ts; return check_block_timestamp(timestamps, b, median_ts); }
 
     /**
      * @brief get the "adjusted time"
