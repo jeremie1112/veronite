@@ -198,6 +198,7 @@ namespace config
     MAINNET = 0,
     TESTNET,
     STAGENET,
-    FAKECHAIN
+    FAKECHAIN,
+    UNDEFINED = 255
   };
 }
