@@ -67,7 +67,7 @@ target_link_libraries(device
   PUBLIC
     ${PCSC_LIBRARIES}
     cncrypto
-	ringct_basic
+    ringct_basic
     ${OPENSSL_CRYPTO_LIBRARIES}
   PRIVATE
     ${Blocks}
