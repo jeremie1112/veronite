@@ -73,8 +73,6 @@ namespace cryptonote
   {
     command_line::add_arg(desc, arg_rpc_bind_port);
     command_line::add_arg(desc, arg_rpc_restricted_bind_port);
-    command_line::add_arg(desc, arg_testnet_rpc_bind_port);
-    command_line::add_arg(desc, arg_testnet_rpc_restricted_bind_port);
     command_line::add_arg(desc, arg_restricted_rpc);
     command_line::add_arg(desc, arg_bootstrap_daemon_address);
     command_line::add_arg(desc, arg_bootstrap_daemon_login);
@@ -92,12 +90,12 @@ namespace cryptonote
   bool core_rpc_server::init(
       const boost::program_options::variables_map& vm
       , const bool restricted
-      , const bool testnet
+      , const network_type nettype
       , const std::string& port
     )
   {
     m_restricted = restricted;
-    m_testnet = testnet;
+    m_nettype = nettype;
     m_net_server.set_threads_prefix("RPC");
 
     auto rpc_config = cryptonote::rpc_args::process(vm);
@@ -192,7 +190,9 @@ namespace cryptonote
     res.rpc_connections_count = get_connections_count();
     res.white_peerlist_size = m_p2p.get_peerlist_manager().get_white_peers_count();
     res.grey_peerlist_size = m_p2p.get_peerlist_manager().get_gray_peers_count();
-    res.testnet = m_testnet;
+    res.mainnet = m_nettype == MAINNET;
+    res.testnet = m_nettype == TESTNET;
+    res.stagenet = m_nettype == STAGENET;
     res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
     res.block_size_limit = m_core.get_blockchain_storage().get_current_cumulative_blocksize_limit();
 	res.block_size_median = m_core.get_blockchain_storage().get_current_cumulative_blocksize_median();
@@ -209,6 +209,15 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  static cryptonote::blobdata get_pruned_tx_blob(cryptonote::transaction &tx)
+  {
+    std::stringstream ss;
+    binary_archive<true> ba(ss);
+    bool r = tx.serialize_base(ba);
+    CHECK_AND_ASSERT_MES(r, cryptonote::blobdata(), "Failed to serialize rct signatures base");
+    return ss.str();
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   static cryptonote::blobdata get_pruned_tx_blob(const cryptonote::blobdata &blobdata)
   {
     cryptonote::transaction tx;
@@ -216,14 +225,9 @@ namespace cryptonote
     if (!cryptonote::parse_and_validate_tx_from_blob(blobdata, tx))
     {
       MERROR("Failed to parse and validate tx from blob");
-      return blobdata;
+      return cryptonote::blobdata();
     }
-
-    std::stringstream ss;
-    binary_archive<true> ba(ss);
-    bool r = tx.serialize_base(ba);
-    CHECK_AND_ASSERT_MES(r, blobdata, "Failed to serialize rct signatures base");
-    return ss.str();
+    return get_pruned_tx_blob(tx);
   }
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_blocks(const COMMAND_RPC_GET_BLOCKS_FAST::request& req, COMMAND_RPC_GET_BLOCKS_FAST::response& res)
@@ -633,7 +637,7 @@ namespace cryptonote
 
       crypto::hash tx_hash = *vhi++;
       e.tx_hash = *txhi++;
-      blobdata blob = t_serializable_object_to_blob(tx);
+      blobdata blob = req.prune ? get_pruned_tx_blob(tx) : t_serializable_object_to_blob(tx);
       e.as_hex = string_tools::buff_to_hex_nodelimer(blob);
       if (req.decode_as_json)
         e.as_json = obj_to_json_str(tx);
@@ -825,7 +829,7 @@ namespace cryptonote
     PERF_TIMER(on_start_mining);
     CHECK_CORE_READY();
     cryptonote::address_parse_info info;
-    if(!get_account_address_from_str(info, m_testnet, req.miner_address))
+    if(!get_account_address_from_str(info, m_nettype, req.miner_address))
     {
       res.status = "Failed, wrong address";
       LOG_PRINT_L0(res.status);
@@ -893,7 +897,7 @@ namespace cryptonote
       res.speed = lMiner.get_speed();
       res.threads_count = lMiner.get_threads_count();
       const account_public_address& lMiningAdr = lMiner.get_mining_address();
-      res.address = get_account_address_as_str(m_testnet, false, lMiningAdr);
+      res.address = get_account_address_as_str(m_nettype, false, lMiningAdr);
     }
 
     res.status = CORE_RPC_STATUS_OK;
@@ -1108,7 +1112,7 @@ namespace cryptonote
 
     cryptonote::address_parse_info info;
 
-    if(!req.wallet_address.size() || !cryptonote::get_account_address_from_str(info, m_testnet, req.wallet_address))
+    if(!req.wallet_address.size() || !cryptonote::get_account_address_from_str(info, m_nettype, req.wallet_address))
     {
       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_WALLET_ADDRESS;
       error_resp.message = "Failed to parse wallet address";
@@ -1564,7 +1568,9 @@ namespace cryptonote
     res.rpc_connections_count = get_connections_count();
     res.white_peerlist_size = m_p2p.get_peerlist_manager().get_white_peers_count();
     res.grey_peerlist_size = m_p2p.get_peerlist_manager().get_gray_peers_count();
-    res.testnet = m_testnet;
+    res.mainnet = m_nettype == MAINNET;
+    res.testnet = m_nettype == TESTNET;
+    res.stagenet = m_nettype == STAGENET;
     res.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(res.height - 1);
     res.block_size_limit = m_core.get_blockchain_storage().get_current_cumulative_blocksize_limit();
 	res.block_size_median = m_core.get_blockchain_storage().get_current_cumulative_blocksize_median();
@@ -1715,7 +1721,7 @@ namespace cryptonote
     std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> histogram;
     try
     {
-      histogram = m_core.get_blockchain_storage().get_output_histogram(req.amounts, req.unlocked, req.recent_cutoff);
+      histogram = m_core.get_blockchain_storage().get_output_histogram(req.amounts, req.unlocked, req.recent_cutoff, req.min_count);
     }
     catch (const std::exception &e)
     {
@@ -2067,28 +2073,89 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_output_distribution(const COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::request& req, COMMAND_RPC_GET_OUTPUT_DISTRIBUTION::response& res, epee::json_rpc::error& error_resp)
+  {
+    PERF_TIMER(on_get_output_distribution);
+    try
+    {
+      for (uint64_t amount: req.amounts)
+      {
+        static struct D
+        {
+          boost::mutex mutex;
+          std::vector<uint64_t> cached_distribution;
+          uint64_t cached_from, cached_to, cached_start_height, cached_base;
+          bool cached;
+          D(): cached_from(0), cached_to(0), cached_start_height(0), cached_base(0), cached(false) {}
+        } d;
+        boost::unique_lock<boost::mutex> lock(d.mutex);
+         if (d.cached && amount == 0 && d.cached_from == req.from_height && d.cached_to == req.to_height)
+        {
+          res.distributions.push_back({amount, d.cached_start_height, d.cached_distribution, d.cached_base});
+          continue;
+        }
 
-  const command_line::arg_descriptor<std::string> core_rpc_server::arg_rpc_bind_port = {
+        std::vector<uint64_t> distribution;
+        uint64_t start_height, base;
+        if (!m_core.get_output_distribution(amount, req.from_height, start_height, distribution, base))
+        {
+          error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+          error_resp.message = "Failed to get rct distribution";
+          return false;
+        }
+        if (req.to_height > 0 && req.to_height >= req.from_height)
+        {
+          uint64_t offset = std::max(req.from_height, start_height);
+          if (offset <= req.to_height && req.to_height - offset + 1 < distribution.size())
+            distribution.resize(req.to_height - offset + 1);
+        }
+        if (req.cumulative)
+        {
+          distribution[0] += base;
+          for (size_t n = 1; n < distribution.size(); ++n)
+            distribution[n] += distribution[n-1];
+        }
+        if (amount == 0)
+        {
+          d.cached_from = req.from_height;
+          d.cached_to = req.to_height;
+          d.cached_distribution = distribution;
+          d.cached_start_height = start_height;
+          d.cached_base = base;
+          d.cached = true;
+        }
+
+        res.distributions.push_back({amount, start_height, std::move(distribution), base});
+      }
+    }
+    catch (const std::exception &e)
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = "Failed to get output distribution";
+      return false;
+    }
+     res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+
+  const command_line::arg_descriptor<std::string, false, true, 2> core_rpc_server::arg_rpc_bind_port = {
       "rpc-bind-port"
     , "Port for RPC server"
     , std::to_string(config::RPC_DEFAULT_PORT)
+    , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
+    , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
+        if (testnet_stagenet[0] && defaulted)
+          return std::to_string(config::testnet::RPC_DEFAULT_PORT);
+        else if (testnet_stagenet[1] && defaulted)
+          return std::to_string(config::stagenet::RPC_DEFAULT_PORT);
+        return val;
+      }
     };
 
   const command_line::arg_descriptor<std::string> core_rpc_server::arg_rpc_restricted_bind_port = {
       "rpc-restricted-bind-port"
     , "Port for restricted RPC server"
-    , ""
-    };
-
-  const command_line::arg_descriptor<std::string> core_rpc_server::arg_testnet_rpc_bind_port = {
-      "testnet-rpc-bind-port"
-    , "Port for testnet RPC server"
-    , std::to_string(config::testnet::RPC_DEFAULT_PORT)
-    };
-
-  const command_line::arg_descriptor<std::string> core_rpc_server::arg_testnet_rpc_restricted_bind_port = {
-      "testnet-rpc-restricted-bind-port"
-    , "Port for testnet restricted RPC server"
     , ""
     };
 

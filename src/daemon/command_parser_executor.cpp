@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "common/dns_utils.h"
+#include "version.h"
 #include "daemon/command_parser_executor.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -268,30 +269,44 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
   }
 
   cryptonote::address_parse_info info;
-  bool testnet = false;
-  if(!cryptonote::get_account_address_from_str(info, false, args.front()))
+  cryptonote::network_type nettype = cryptonote::MAINNET;
+  if(!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, args.front()))
   {
-    if(!cryptonote::get_account_address_from_str(info, true, args.front()))
+    if(!cryptonote::get_account_address_from_str(info, cryptonote::TESTNET, args.front()))
     {
-      bool dnssec_valid;
-      std::string address_str = tools::dns_utils::get_account_address_as_str_from_url(args.front(), dnssec_valid,
-          [](const std::string &url, const std::vector<std::string> &addresses, bool dnssec_valid){return addresses[0];});
-      if(!cryptonote::get_account_address_from_str(info, false, address_str))
+      if(!cryptonote::get_account_address_from_str(info, cryptonote::STAGENET, args.front()))
       {
-        if(!cryptonote::get_account_address_from_str(info, true, address_str))
+        bool dnssec_valid;
+        std::string address_str = tools::dns_utils::get_account_address_as_str_from_url(args.front(), dnssec_valid,
+            [](const std::string &url, const std::vector<std::string> &addresses, bool dnssec_valid){return addresses[0];});
+        if(!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, address_str))
         {
-          std::cout << "target account address has wrong format" << std::endl;
-          return true;
+          if(!cryptonote::get_account_address_from_str(info, cryptonote::TESTNET, address_str))
+          {
+            if(!cryptonote::get_account_address_from_str(info, cryptonote::STAGENET, address_str))
+            {
+              std::cout << "target account address has wrong format" << std::endl;
+              return true;
+            }
+            else
+            {
+              nettype = cryptonote::STAGENET;
+            }
+          }
+          else
+          {
+            nettype = cryptonote::TESTNET;
+          }
         }
-        else
-        {
-          testnet = true;
-        }
+      }
+      else
+      {
+        nettype = cryptonote::STAGENET;
       }
     }
     else
     {
-      testnet = true;
+      nettype = cryptonote::TESTNET;
     }
   }
   if (info.is_subaddress)
@@ -299,8 +314,8 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
     tools::fail_msg_writer() << "subaddress for mining reward is not yet supported!" << std::endl;
     return true;
   }
-  if(testnet)
-    std::cout << "Mining to a testnet address, make sure this is intentional!" << std::endl;
+  if(nettype != cryptonote::MAINNET)
+    std::cout << "Mining to a " << (nettype == cryptonote::TESTNET ? "testnet" : "stagenet") << "address, make sure this is intentional!" << std::endl;
   uint64_t threads_count = 1;
   bool do_background_mining = false;  
   bool ignore_battery = false;  
@@ -325,7 +340,7 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
     threads_count = (ok && 0 < threads_count) ? threads_count : 1;
   }
 
-  m_executor.start_mining(info.address, threads_count, testnet, do_background_mining, ignore_battery);
+  m_executor.start_mining(info.address, threads_count, nettype, do_background_mining, ignore_battery);
 
   return true;
 }
@@ -365,8 +380,6 @@ bool t_command_parser_executor::set_limit(const std::vector<std::string>& args)
       std::cout << "failed to parse argument" << std::endl;
       return false;
   }
-  if (limit > 0)
-    limit *= 1024;
 
   return m_executor.set_limit(limit, limit);
 }
@@ -385,8 +398,6 @@ bool t_command_parser_executor::set_limit_up(const std::vector<std::string>& arg
       std::cout << "failed to parse argument" << std::endl;
       return false;
   }
-  if (limit > 0)
-    limit *= 1024;
 
   return m_executor.set_limit(0, limit);
 }
@@ -405,8 +416,6 @@ bool t_command_parser_executor::set_limit_down(const std::vector<std::string>& a
       std::cout << "failed to parse argument" << std::endl;
       return false;
   }
-  if (limit > 0)
-    limit *= 1024;
 
   return m_executor.set_limit(limit, 0);
 }
@@ -645,6 +654,12 @@ bool t_command_parser_executor::sync_info(const std::vector<std::string>& args)
   if (args.size() != 0) return false;
 
   return m_executor.sync_info();
+}
+
+bool t_command_parser_executor::version(const std::vector<std::string>& args)
+{
+  std::cout << "Veronite '" << VERONITE_RELEASE_NAME << "' (v" << VERONITE_VERSION_FULL << ")" << std::endl;
+  return true;
 }
 
 } // namespace daemonize

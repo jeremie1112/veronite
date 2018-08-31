@@ -215,7 +215,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_bg_mining_miner_target_percentage);
   }
   //-----------------------------------------------------------------------------------------------------
-  bool miner::init(const boost::program_options::variables_map& vm, bool testnet)
+  bool miner::init(const boost::program_options::variables_map& vm, network_type nettype)
   {
     if(command_line::has_arg(vm, arg_extra_messages))
     {
@@ -243,7 +243,7 @@ namespace cryptonote
     if(command_line::has_arg(vm, arg_start_mining))
     {
       address_parse_info info;
-      if(!cryptonote::get_account_address_from_str(info, testnet, command_line::get_arg(vm, arg_start_mining)) || info.is_subaddress)
+      if(!cryptonote::get_account_address_from_str(info, nettype, command_line::get_arg(vm, arg_start_mining)) || info.is_subaddress)
       {
         LOG_ERROR("Target account address " << command_line::get_arg(vm, arg_start_mining) << " has wrong format, starting daemon canceled");
         return false;
@@ -620,20 +620,14 @@ namespace cryptonote
         continue; // if interrupted because stop called, loop should end ..
       }
 
-      boost::tribool battery_powered(on_battery_power());
-      bool on_ac_power = false;
-      if(indeterminate( battery_powered ))
+      bool on_ac_power = m_ignore_battery;
+      if(!m_ignore_battery)
       {
-        // name could be better, only ignores battery requirement if we failed
-        // to get the status of the system
-        if( m_ignore_battery )
+        boost::tribool battery_powered(on_battery_power());
+        if(!indeterminate( battery_powered ))
         {
-          on_ac_power = true;
+          on_ac_power = !battery_powered;
         }
-      }
-      else
-      {
-        on_ac_power = !battery_powered;
       }
 
       if( m_is_background_mining_started )

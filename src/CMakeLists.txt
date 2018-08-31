@@ -1,4 +1,5 @@
 # Copyright (c) 2017-2018, Haven Protocol
+# Copyright (c) 2018 Veronite Ecosystem
 #
 # Portions Copyright (c) 2014-2017 The Monero Project.
 #
@@ -145,3 +146,5 @@ endif()
 if(PER_BLOCK_CHECKPOINT)
   add_subdirectory(blocks)
 endif()
+
+add_subdirectory(device)
