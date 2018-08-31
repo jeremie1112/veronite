@@ -35,19 +35,12 @@
 
 #include <string>
 #include <vector>
-#include <list>
 #include <set>
 #include <ctime>
 #include <iostream>
 
 //  Public interface for libwallet library
 namespace Monero {
-
-enum NetworkType : uint8_t {
-    MAINNET = 0,
-    TESTNET,
-    STAGENET
-};
 
     namespace Utils {
         bool isAddressLocal(const std::string &hostaddr);
@@ -367,10 +360,7 @@ struct Wallet
     virtual std::string address(uint32_t accountIndex = 0, uint32_t addressIndex = 0) const = 0;
     std::string mainAddress() const { return address(0, 0); }
     virtual std::string path() const = 0;
-    virtual NetworkType nettype() const = 0;
-    bool mainnet() const { return nettype() == MAINNET; }
-    bool testnet() const { return nettype() == TESTNET; }
-    bool stagenet() const { return nettype() == STAGENET; }
+    virtual bool testnet() const = 0;
     //! returns current hard fork info
     virtual void hardForkInfo(uint8_t &version, uint64_t &earliest_height) const = 0;
     //! check if hard fork rules should be used
@@ -541,21 +531,9 @@ struct Wallet
     static uint64_t amountFromDouble(double amount);
     static std::string genPaymentId();
     static bool paymentIdValid(const std::string &paiment_id);
-    static bool addressValid(const std::string &str, NetworkType nettype);
-    static bool addressValid(const std::string &str, bool testnet)          // deprecated
-    {
-        return addressValid(str, testnet ? TESTNET : MAINNET);
-    }
-    static bool keyValid(const std::string &secret_key_string, const std::string &address_string, bool isViewKey, NetworkType nettype, std::string &error);
-    static bool keyValid(const std::string &secret_key_string, const std::string &address_string, bool isViewKey, bool testnet, std::string &error)     // deprecated
-    {
-        return keyValid(secret_key_string, address_string, isViewKey, testnet ? TESTNET : MAINNET, error);
-    }
-    static std::string paymentIdFromAddress(const std::string &str, NetworkType nettype);
-    static std::string paymentIdFromAddress(const std::string &str, bool testnet)       // deprecated
-    {
-        return paymentIdFromAddress(str, testnet ? TESTNET : MAINNET);
-    }
+    static bool addressValid(const std::string &str, bool testnet);
+    static bool keyValid(const std::string &secret_key_string, const std::string &address_string, bool isViewKey, bool testnet, std::string &error);
+    static std::string paymentIdFromAddress(const std::string &str, bool testnet);
     static uint64_t maximumAllowedAmount();
     // Easylogger wrapper
     static void init(const char *argv0, const char *default_log_base_name);
@@ -751,23 +729,6 @@ struct Wallet
     */
     virtual bool rescanSpent() = 0;
 
-    //! blackballs a set of outputs
-    virtual bool blackballOutputs(const std::vector<std::string> &pubkeys, bool add) = 0;
-     //! unblackballs an output
-    virtual bool unblackballOutput(const std::string &pubkey) = 0;
-     //! gets the ring used for a key image, if any
-    virtual bool getRing(const std::string &key_image, std::vector<uint64_t> &ring) const = 0;
-     //! gets the rings used for a txid, if any
-    virtual bool getRings(const std::string &txid, std::vector<std::pair<std::string, std::vector<uint64_t>>> &rings) const = 0;
-     //! sets the ring used for a key image
-    virtual bool setRing(const std::string &key_image, const std::vector<uint64_t> &ring, bool relative) = 0;
-     //! sets whether pre-fork outs are to be segregated
-    virtual void segregatePreForkOutputs(bool segregate) = 0;
-     //! sets the height where segregation should occur
-    virtual void segregationHeight(uint64_t height) = 0;
-     //! secondary key reuse mitigation
-    virtual void keyReuseMitigation2(bool mitigation) = 0;
-
     //! Light wallet authenticate and login
     virtual bool lightWalletLogin(bool &isNewWallet) const = 0;
 
@@ -785,16 +746,10 @@ struct WalletManager
      * \brief  Creates new wallet
      * \param  path           Name of wallet file
      * \param  password       Password of wallet file
-     * \param  nettype        Network type
      * \param  language       Language to be used to generate electrum seed mnemonic
-     * \param  nettype        Network type
      * \return                Wallet instance (Wallet::status() needs to be called to check if created successfully)
      */
-    virtual Wallet * createWallet(const std::string &path, const std::string &password, const std::string &language, NetworkType nettype) = 0;
-    Wallet * createWallet(const std::string &path, const std::string &password, const std::string &language, bool testnet = false)      // deprecated
-    {
-        return createWallet(path, password, language, testnet ? TESTNET : MAINNET);
-    }
+    virtual Wallet * createWallet(const std::string &path, const std::string &password, const std::string &language, bool testnet = false) = 0;
 
     /*!
      * \brief  Opens existing wallet
@@ -802,48 +757,35 @@ struct WalletManager
      * \param  password       Password of wallet file
      * \return                Wallet instance (Wallet::status() needs to be called to check if opened successfully)
      */
-    virtual Wallet * openWallet(const std::string &path, const std::string &password, NetworkType nettype) = 0;
-    Wallet * openWallet(const std::string &path, const std::string &password, bool testnet = false)     // deprecated
-    {
-        return openWallet(path, password, testnet ? TESTNET : MAINNET);
-    }
+    virtual Wallet * openWallet(const std::string &path, const std::string &password, bool testnet = false) = 0;
 
     /*!
      * \brief  recovers existing wallet using mnemonic (electrum seed)
      * \param  path           Name of wallet file to be created
      * \param  password       Password of wallet file
      * \param  mnemonic       mnemonic (25 words electrum seed)
-     * \param  nettype        Network type
+     * \param  testnet        testnet
      * \param  restoreHeight  restore from start height
      * \return                Wallet instance (Wallet::status() needs to be called to check if recovered successfully)
      */
         virtual Wallet * recoveryWallet(const std::string &path, const std::string &password, const std::string &mnemonic,
-                                    NetworkType nettype = MAINNET, uint64_t restoreHeight = 0) = 0;
-    Wallet * recoveryWallet(const std::string &path, const std::string &password, const std::string &mnemonic,
-                                    bool testnet = false, uint64_t restoreHeight = 0)           // deprecated
-    {
-        return recoveryWallet(path, password, mnemonic, testnet ? TESTNET : MAINNET, restoreHeight);
-    }
+                                    bool testnet = false, uint64_t restoreHeight = 0) = 0;
      /*!
      * \deprecated this method creates a wallet WITHOUT a passphrase, use the alternate recoverWallet() method
      * \brief  recovers existing wallet using mnemonic (electrum seed)
      * \param  path           Name of wallet file to be created
      * \param  mnemonic       mnemonic (25 words electrum seed)
-     * \param  nettype        Network type
+     * \param  testnet        testnet
      * \param  restoreHeight  restore from start height
      * \return                Wallet instance (Wallet::status() needs to be called to check if recovered successfully)
      */
-    virtual Wallet * recoveryWallet(const std::string &path, const std::string &mnemonic, NetworkType nettype, uint64_t restoreHeight = 0) = 0;
-    Wallet * recoveryWallet(const std::string &path, const std::string &mnemonic, bool testnet = false, uint64_t restoreHeight = 0)         // deprecated
-    {
-        return recoveryWallet(path, mnemonic, testnet ? TESTNET : MAINNET, restoreHeight);
-    }
+    virtual Wallet * recoveryWallet(const std::string &path, const std::string &mnemonic, bool testnet = false, uint64_t restoreHeight = 0) = 0;
      /*!
      * \brief  recovers existing wallet using keys. Creates a view only wallet if spend key is omitted
      * \param  path           Name of wallet file to be created
      * \param  password       Password of wallet file
      * \param  language       language
-     * \param  nettype        Network type
+     * \param  testnet        testnet
      * \param  restoreHeight  restore from start height
      * \param  addressString  public address
      * \param  viewKeyString  view key
@@ -853,29 +795,18 @@ struct WalletManager
     virtual Wallet * createWalletFromKeys(const std::string &path,
                                                     const std::string &password,
                                                     const std::string &language,
-                                                    NetworkType nettype,
+                                                    bool testnet,
                                                     uint64_t restoreHeight,
                                                     const std::string &addressString,
                                                     const std::string &viewKeyString,
                                                     const std::string &spendKeyString = "") = 0;
-    Wallet * createWalletFromKeys(const std::string &path,
-                                  const std::string &password,
-                                  const std::string &language,
-                                  bool testnet,
-                                  uint64_t restoreHeight,
-                                  const std::string &addressString,
-                                  const std::string &viewKeyString,
-                                  const std::string &spendKeyString = "")       // deprecated
-    {
-        return createWalletFromKeys(path, password, language, testnet ? TESTNET : MAINNET, restoreHeight, addressString, viewKeyString, spendKeyString);
-    }
 
    /*!
     * \deprecated this method creates a wallet WITHOUT a passphrase, use createWalletFromKeys(..., password, ...) instead
     * \brief  recovers existing wallet using keys. Creates a view only wallet if spend key is omitted
     * \param  path           Name of wallet file to be created
     * \param  language       language
-    * \param  nettype        Network type
+    * \param  testnet        testnet
     * \param  restoreHeight  restore from start height
     * \param  addressString  public address
     * \param  viewKeyString  view key
@@ -884,21 +815,11 @@ struct WalletManager
     */
     virtual Wallet * createWalletFromKeys(const std::string &path,
                                                     const std::string &language,
-                                                    NetworkType nettype,
+                                                    bool testnet,
                                                     uint64_t restoreHeight,
                                                     const std::string &addressString,
                                                     const std::string &viewKeyString,
                                                     const std::string &spendKeyString = "") = 0;
-    Wallet * createWalletFromKeys(const std::string &path, 
-                                  const std::string &language,
-                                  bool testnet, 
-                                  uint64_t restoreHeight,
-                                  const std::string &addressString,
-                                  const std::string &viewKeyString,
-                                  const std::string &spendKeyString = "")           // deprecated
-    {
-        return createWalletFromKeys(path, language, testnet ? TESTNET : MAINNET, restoreHeight, addressString, viewKeyString, spendKeyString);
-    }
 
     /*!
      * \brief Closes wallet. In case operation succeded, wallet object deleted. in case operation failed, wallet object not deleted
@@ -941,25 +862,25 @@ struct WalletManager
     virtual void setDaemonAddress(const std::string &address) = 0;
 
     //! returns whether the daemon can be reached, and its version number
-    virtual bool connected(uint32_t *version = NULL) = 0;
+    virtual bool connected(uint32_t *version = NULL) const = 0;
 
     //! returns current blockchain height
-    virtual uint64_t blockchainHeight() = 0;
+    virtual uint64_t blockchainHeight() const = 0;
 
     //! returns current blockchain target height
-    virtual uint64_t blockchainTargetHeight() = 0;
+    virtual uint64_t blockchainTargetHeight() const = 0;
 
     //! returns current network difficulty
-    virtual uint64_t networkDifficulty() = 0;
+    virtual uint64_t networkDifficulty() const = 0;
 
     //! returns current mining hash rate (0 if not mining)
-    virtual double miningHashRate() = 0;
+    virtual double miningHashRate() const = 0;
 
     //! returns current block target
-    virtual uint64_t blockTarget() = 0;
+    virtual uint64_t blockTarget() const = 0;
 
     //! returns true iff mining
-    virtual bool isMining() = 0;
+    virtual bool isMining() const = 0;
 
     //! starts mining with the set number of threads
     virtual bool startMining(const std::string &address, uint32_t threads = 1, bool background_mining = false, bool ignore_battery = true) = 0;

@@ -165,7 +165,7 @@ namespace crypto {
     generate_random_bytes_not_thread_safe(sizeof(T), &res);
     return res;
   }
-  
+
   /* Generate a new key pair
    */
   inline secret_key generate_keys(public_key &pub, secret_key &sec, const secret_key& recovery_key = secret_key(), bool recover = false) {

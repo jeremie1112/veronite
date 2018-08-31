@@ -45,7 +45,6 @@ set(crypto_sources
   random.c
   skein.c
   tree-hash.c
-  slow-hash.c
   cn_slow_hash_soft.cpp
   cn_slow_hash_hard_intel.cpp)
 

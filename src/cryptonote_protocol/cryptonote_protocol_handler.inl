@@ -271,7 +271,7 @@ namespace cryptonote
       const uint8_t version = m_core.get_ideal_hard_fork_version(hshd.current_height - 1);
       if (version != hshd.top_version)
       {
-        if (version < hshd.top_version && version == m_core.get_ideal_hard_fork_version())
+        if (version < hshd.top_version)
           MCLOG_RED(el::Level::Warning, "global", context << " peer claims higher version that we think (" <<
               (unsigned)hshd.top_version << " for " << (hshd.current_height - 1) << "instead of " << (unsigned)version <<
               ") - we may be forked from the network and a software upgrade may be needed");
@@ -306,8 +306,7 @@ namespace cryptonote
       << " [Your node is " << std::abs(diff) << " blocks (" << (abs(diff)  / (24 * 60 * 60 / DIFFICULTY_TARGET))  << " days) "
       << (0 <= diff ? std::string("behind") : std::string("ahead"))
       << "] " << ENDL << "SYNCHRONIZATION started");
-      if (hshd.current_height >= m_core.get_current_blockchain_height() + 5) // don't switch to unsafe mode just for a few blocks
-        m_core.safesyncmode(false);
+      m_core.safesyncmode(false);
     }
     LOG_PRINT_L1("Remote blockchain height: " << hshd.current_height << ", id: " << hshd.top_id);
     context.m_state = cryptonote_connection_context::state_synchronizing;
@@ -794,7 +793,7 @@ namespace cryptonote
       relay_transactions(arg, context);
     }
 
-    return 1;
+    return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
@@ -1005,7 +1004,6 @@ skip:
           if (blocks.empty())
           {
             MERROR("Next span has no blocks");
-            m_block_queue.remove_spans(span_connection_id, start_height);
             break;
           }
 
@@ -1013,7 +1011,6 @@ skip:
           if (!parse_and_validate_block_from_blob(blocks.front().block, new_block))
           {
             MERROR("Failed to parse block, but it should already have been parsed");
-            m_block_queue.remove_spans(span_connection_id, start_height);
             break;
           }
           bool parent_known = m_core.have_block(new_block.prev_id);
@@ -1030,7 +1027,6 @@ skip:
               // this can happen if a connection was sicced onto a late span, if it did not have those blocks,
               // since we don't know that at the sic time
               LOG_ERROR_CCONTEXT("Got block with unknown parent which was not requested - querying block hashes");
-              m_block_queue.remove_spans(span_connection_id, start_height);
               context.m_needed_objects.clear();
               context.m_last_response_height = 0;
               goto skip;
@@ -1064,7 +1060,7 @@ skip:
             if (tvc.size() != block_entry.txs.size())
             {
               LOG_ERROR_CCONTEXT("Internal error: tvc.size() != block_entry.txs.size()");
-              return 1;
+              return true;
             }
             std::list<blobdata>::const_iterator it = block_entry.txs.begin();
             for (size_t i = 0; i < tvc.size(); ++i, ++it)
@@ -1075,7 +1071,7 @@ skip:
                   LOG_ERROR_CCONTEXT("transaction verification failed on NOTIFY_RESPONSE_GET_OBJECTS, tx_id = "
                       << epee::string_tools::pod_to_hex(get_blob_hash(*it)) << ", dropping connection");
                   drop_connection(context, false, true);
-                  return 1;
+                  return true;
                 }))
                   LOG_ERROR_CCONTEXT("span connection id not found");
 
@@ -1104,7 +1100,7 @@ skip:
               if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block verification failed, dropping connection");
                 drop_connection(context, true, true);
-                return 1;
+                return true;
               }))
                 LOG_ERROR_CCONTEXT("span connection id not found");
 
@@ -1123,7 +1119,7 @@ skip:
               if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block received at sync phase was marked as orphaned, dropping connection");
                 drop_connection(context, true, true);
-                return 1;
+                return true;
               }))
                 LOG_ERROR_CCONTEXT("span connection id not found");
 
@@ -1693,7 +1689,7 @@ skip:
     m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, fluffyBlob, fluffyConnections);
     m_p2p->relay_notify_to_list(NOTIFY_NEW_BLOCK::ID, fullBlob, fullConnections);
 
-    return true;
+    return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>

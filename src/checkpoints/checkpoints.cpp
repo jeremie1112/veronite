@@ -161,7 +161,7 @@ namespace cryptonote
     return true;
   }
 
-  bool checkpoints::init_default_checkpoints(network_type nettype)
+  bool checkpoints::init_default_checkpoints(bool testnet)
   {
     return true;
   }
@@ -202,7 +202,7 @@ namespace cryptonote
     return true;
   }
 
-  bool checkpoints::load_checkpoints_from_dns(network_type nettype)
+  bool checkpoints::load_checkpoints_from_dns(bool testnet)
   {
     std::vector<std::string> records;
 
@@ -214,12 +214,7 @@ namespace cryptonote
     static const std::vector<std::string> testnet_dns_urls = {
     };
 
-     static const std::vector<std::string> stagenet_dns_urls = { "stagenetpoints.veronite.space"
-                   , "stagenetpoints.veronite.space"
-                   , "stagenetpoints.veronite.space"
-                   , "stagenetpoints.veronite.space"
-    };
-     if (!tools::dns_utils::load_txt_records_from_dns(records, nettype == TESTNET ? testnet_dns_urls : nettype == STAGENET ? stagenet_dns_urls : dns_urls))
+    if (!tools::dns_utils::load_txt_records_from_dns(records, testnet ? testnet_dns_urls : dns_urls))
       return true; // why true ?
 
     for (const auto& record : records)
@@ -252,14 +247,14 @@ namespace cryptonote
     return true;
   }
 
-  bool checkpoints::load_new_checkpoints(const std::string &json_hashfile_fullpath, network_type nettype, bool dns)
+  bool checkpoints::load_new_checkpoints(const std::string &json_hashfile_fullpath, bool testnet, bool dns)
   {
     bool result;
 
     result = load_checkpoints_from_json(json_hashfile_fullpath);
     if (dns)
     {
-      result &= load_checkpoints_from_dns(nettype);
+      result &= load_checkpoints_from_dns(testnet);
     }
 
     return result;

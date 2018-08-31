@@ -77,6 +77,7 @@ namespace nodetool
   {
     command_line::add_arg(desc, arg_p2p_bind_ip);
     command_line::add_arg(desc, arg_p2p_bind_port, false);
+    command_line::add_arg(desc, arg_testnet_p2p_bind_port, false);
     command_line::add_arg(desc, arg_p2p_external_port);
     command_line::add_arg(desc, arg_p2p_allow_local_ip);
     command_line::add_arg(desc, arg_p2p_add_peer);
@@ -264,12 +265,12 @@ namespace nodetool
       const boost::program_options::variables_map& vm
     )
   {
-    bool testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-    bool stagenet = command_line::get_arg(vm, cryptonote::arg_stagenet_on);
-    m_nettype = testnet ? cryptonote::TESTNET : stagenet ? cryptonote::STAGENET : cryptonote::MAINNET;
+    m_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
+
+    auto p2p_bind_arg = m_testnet ? arg_testnet_p2p_bind_port : arg_p2p_bind_port;
 
     m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
-    m_port = command_line::get_arg(vm, arg_p2p_bind_port);
+    m_port = command_line::get_arg(vm, p2p_bind_arg);
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
     m_no_igd = command_line::get_arg(vm, arg_no_igd);
@@ -282,7 +283,7 @@ namespace nodetool
       {
         nodetool::peerlist_entry pe = AUTO_VAL_INIT(pe);
         pe.id = crypto::rand<uint64_t>();
-        const uint16_t default_port = testnet ? ::config::testnet::P2P_DEFAULT_PORT : stagenet ? ::config::stagenet::P2P_DEFAULT_PORT : ::config::P2P_DEFAULT_PORT;
+        const uint16_t default_port = m_testnet ? ::config::testnet::P2P_DEFAULT_PORT : ::config::P2P_DEFAULT_PORT;
         bool r = parse_peer_from_string(pe.adr, pr_str, default_port);
         CHECK_AND_ASSERT_MES(r, false, "Failed to parse address from string: " << pr_str);
         m_command_line_peers.push_back(pe);
@@ -375,19 +376,14 @@ namespace nodetool
 
   //-----------------------------------------------------------------------------------
   template<class t_payload_net_handler>
-  std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(cryptonote::network_type nettype) const
+  std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(bool testnet) const
   {
     std::set<std::string> full_addrs;
-    if (nettype == cryptonote::TESTNET)
+    if (testnet)
     {
       full_addrs.insert("46.4.58.104:37749");
       full_addrs.insert("46.4.58.105:37749");
       full_addrs.insert("46.4.58.106:37749");
-    }
-    else if (nettype == cryptonote::STAGENET)
-    {
-      full_addrs.insert("46.4.58.106:38078");
-      full_addrs.insert("46.4.58.105:38078");
     }
     else
     {
@@ -406,15 +402,10 @@ namespace nodetool
     bool res = handle_command_line(vm);
     CHECK_AND_ASSERT_MES(res, false, "Failed to handle command line");
 
-    if (m_nettype == cryptonote::TESTNET)
+    if (m_testnet)
     {
       memcpy(&m_network_id, &::config::testnet::NETWORK_ID, 16);
-      full_addrs = get_seed_nodes(cryptonote::TESTNET);
-    }
-    else if (m_nettype == cryptonote::STAGENET)
-    {
-      memcpy(&m_network_id, &::config::stagenet::NETWORK_ID, 16);
-      full_addrs = get_seed_nodes(cryptonote::STAGENET);
+      full_addrs = get_seed_nodes(true);
     }
    else if (m_exclusive_peers.empty())
     {
@@ -495,7 +486,7 @@ namespace nodetool
         else
           MINFO("Not enough DNS seed nodes found, using fallback defaults too");
 
-        for (const auto &peer: get_seed_nodes(cryptonote::MAINNET))
+        for (const auto &peer: get_seed_nodes(false))
           full_addrs.insert(peer);
       }
     }
@@ -507,11 +498,11 @@ namespace nodetool
     }
     MDEBUG("Number of seed nodes: " << m_seed_nodes.size());
 
-    m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
+    auto config_arg = m_testnet ? cryptonote::arg_testnet_data_dir : cryptonote::arg_data_dir;
+    m_config_folder = command_line::get_arg(vm, config_arg);
 
-    if ((m_nettype == cryptonote::MAINNET && m_port != std::to_string(::config::P2P_DEFAULT_PORT))
-        || (m_nettype == cryptonote::TESTNET && m_port != std::to_string(::config::testnet::P2P_DEFAULT_PORT))
-        || (m_nettype == cryptonote::STAGENET && m_port != std::to_string(::config::stagenet::P2P_DEFAULT_PORT))) {
+    if ((!m_testnet && m_port != std::to_string(::config::P2P_DEFAULT_PORT))
+        || (m_testnet && m_port != std::to_string(::config::testnet::P2P_DEFAULT_PORT))) {
       m_config_folder = m_config_folder + "/" + m_port;
     }
 
@@ -1145,7 +1136,7 @@ namespace nodetool
           if (!fallback_nodes_added)
           {
             MWARNING("Failed to connect to any of seed peers, trying fallback seeds");
-            for (const auto &peer: get_seed_nodes(m_nettype))
+            for (const auto &peer: get_seed_nodes(m_testnet))
             {
               MDEBUG("Fallback seed node: " << peer);
               append_net_address(m_seed_nodes, peer);
@@ -1803,7 +1794,7 @@ namespace nodetool
     for(const std::string& pr_str: perrs)
     {
       epee::net_utils::network_address na = AUTO_VAL_INIT(na);
-      const uint16_t default_port = m_nettype == cryptonote::TESTNET ? ::config::testnet::P2P_DEFAULT_PORT : m_nettype == cryptonote::STAGENET ? ::config::stagenet::P2P_DEFAULT_PORT : ::config::P2P_DEFAULT_PORT;
+      const uint16_t default_port = m_testnet ? ::config::testnet::P2P_DEFAULT_PORT : ::config::P2P_DEFAULT_PORT;
       bool r = parse_peer_from_string(na, pr_str, default_port);
       CHECK_AND_ASSERT_MES(r, false, "Failed to parse address from string: " << pr_str);
       container.push_back(na);

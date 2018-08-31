@@ -224,7 +224,7 @@ namespace nodetool
     void cache_connect_fail_info(const epee::net_utils::network_address& addr);
     bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
     bool is_priority_node(const epee::net_utils::network_address& na);
-    std::set<std::string> get_seed_nodes(cryptonote::network_type nettype) const;
+    std::set<std::string> get_seed_nodes(bool testnet) const;
     bool connect_to_seed();
 
     template <class Container>
@@ -332,13 +332,14 @@ namespace nodetool
     epee::critical_section m_host_fails_score_lock;
     std::map<std::string, uint64_t> m_host_fails_score;
 
-    cryptonote::network_type m_nettype;
+    bool m_testnet;
   };
 
-    const int64_t default_limit_up = 2048; // kB/s
-    const int64_t default_limit_down = 8192; // kB/s
+    const int64_t default_limit_up = 2048;
+    const int64_t default_limit_down = 8192;
     extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ip;
-    extern const command_line::arg_descriptor<std::string, false, true, 2> arg_p2p_bind_port;
+    extern const command_line::arg_descriptor<std::string> arg_p2p_bind_port;
+    extern const command_line::arg_descriptor<std::string> arg_testnet_p2p_bind_port;
     extern const command_line::arg_descriptor<uint32_t>    arg_p2p_external_port;
     extern const command_line::arg_descriptor<bool>        arg_p2p_allow_local_ip;
     extern const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_peer;

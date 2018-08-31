@@ -54,10 +54,6 @@ else()
   )
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  add_definitions(-DDEBUG_TMPDIR_LOG=1)
-endif()
-
 monero_private_headers(daemonizer
   ${daemonizer_private_headers})
 monero_add_library(daemonizer
