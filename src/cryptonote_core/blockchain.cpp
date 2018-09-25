@@ -4287,9 +4287,9 @@ uint64_t Blockchain::get_difficulty_target() const
   return DIFFICULTY_TARGET;
 }
 
-std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const
+std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff) const
 {
-  return m_db->get_output_histogram(amounts, unlocked, recent_cutoff, min_count);
+  return m_db->get_output_histogram(amounts, unlocked, recent_cutoff);
 }
 
 std::list<std::pair<Blockchain::block_extended_info,uint64_t>> Blockchain::get_alternative_chains() const
